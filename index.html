@@ -2059,23 +2059,17 @@ function checkDateMismatch(procedures, jsonData) {
         (col + ' ' + (headerLine2[index] || '')).trim()
     );
 
-    // Tìm cột ngày thực hiện và thời gian bắt đầu
-    const procedureDateIndex = combinedHeaders.findIndex(h => 
-        h.includes("Ngày thực hiện")
-    );
-    const startTimeIndex = combinedHeaders.findIndex(h => 
-        h.includes("Thời gian bắt đầu thực hiện")
-    );
-    
-    // Tìm cột bác sỹ chỉ định
+    // 1. Thêm tìm cột Thời gian kết thúc
+    const procedureDateIndex = combinedHeaders.findIndex(h => h.includes("Ngày thực hiện"));
+    const startTimeIndex = combinedHeaders.findIndex(h => h.includes("Thời gian bắt đầu thực hiện"));
+    const endTimeIndex = combinedHeaders.findIndex(h => h.includes("Thời gian kết thúc"));
     const doctorIndex = combinedHeaders.findIndex(h => h.includes("Bác sỹ chỉ định"));
 
-    if (procedureDateIndex === -1 || startTimeIndex === -1) {
-        console.log("Không tìm thấy cột Ngày thực hiện hoặc Thời gian bắt đầu thực hiện");
+    if (procedureDateIndex === -1 || startTimeIndex === -1 || endTimeIndex === -1) {
+        console.log("Không tìm thấy cột Ngày thực hiện, Thời gian bắt đầu hoặc Thời gian kết thúc");
         return;
     }
 
-    // Tìm các cột khác cần thiết
     const procedureIndex = combinedHeaders.findIndex(h => h.includes("Thủ thuật"));
     const nameIndex = combinedHeaders.findIndex(h => h.includes("Họ tên"));
     const patientIdIndex = combinedHeaders.findIndex(h => h.includes("Mã BN"));
@@ -2095,75 +2089,78 @@ function checkDateMismatch(procedures, jsonData) {
             
             const procedureDate = (row[procedureDateIndex] || '').toString().trim();
             const startTimeValue = (row[startTimeIndex] || '').toString().trim();
+            const endTimeValue = (row[endTimeIndex] || '').toString().trim();
             
-            if (!procedureDate || !startTimeValue) return;
+            if (!procedureDate || !startTimeValue || !endTimeValue) return;
             
-            // Parse ngày thực hiện
-            let procedureDay, procedureMonth, procedureYear;
+            // Parse ngày thực hiện (Format: DD/MM/YYYY)
+            let pDay, pMonth, pYear;
             if (procedureDate.includes('/')) {
                 const parts = procedureDate.split('/');
                 if (parts.length === 3) {
-                    [procedureDay, procedureMonth, procedureYear] = parts.map(Number);
+                    [pDay, pMonth, pYear] = parts.map(Number);
                 }
             }
+            if (!pDay || !pMonth || !pYear) return;
             
-            if (!procedureDay || !procedureMonth || !procedureYear) return;
-            
-            // Parse thời gian bắt đầu
+            // Parse thời gian bắt đầu và kết thúc
             const startTime = parseDateTime(row[startTimeIndex], rowNumber);
-            if (!startTime) return;
+            const endTime = parseDateTime(row[endTimeIndex], rowNumber);
+            if (!startTime || !endTime) return;
             
-            // So sánh ngày
-            const [startDay, startMonth, startYear] = startTime.dateKey.split('/').map(Number);
+            // Lấy thông tin ngày từ thời gian bắt đầu và kết thúc
+            const [sDay, sMonth, sYear] = startTime.dateKey.split('/').map(Number);
+            const [eDay, eMonth, eYear] = endTime.dateKey.split('/').map(Number);
             
-            // Kiểm tra xem có phải là Sắc thuốc thang không
             const isHerbProcedure = procedureName.toLowerCase().includes('sắc thuốc thang');
-            
             let isDateMismatch = false;
             let errorMessage = '';
-            
-            if (procedureDay !== startDay || procedureMonth !== startMonth || procedureYear !== startYear) {
+
+            // 2. Logic kiểm tra so khớp ngày
+            const startNotMatch = (pDay !== sDay || pMonth !== sMonth || pYear !== sYear);
+            const endNotMatch = (pDay !== eDay || pMonth !== eMonth || pYear !== eYear);
+
+            if (startNotMatch || endNotMatch) {
                 if (isHerbProcedure) {
-                    // Với Sắc thuốc thang: kiểm tra nếu thứ 6 -> thứ 7, chủ nhật
-                    const procDate = new Date(procedureYear, procedureMonth - 1, procedureDay);
-                    const startDate = new Date(startYear, startMonth - 1, startDay);
-                    
-                    const procDayOfWeek = procDate.getDay(); // 0=CN, 1=T2, ..., 5=T6, 6=T7
+                    const procDate = new Date(pYear, pMonth - 1, pDay);
+                    const startDate = new Date(sYear, sMonth - 1, sDay);
+                    const procDayOfWeek = procDate.getDay(); // 0=CN, 5=T6
                     const startDayOfWeek = startDate.getDay();
-                    
-                    // Tính số ngày chênh lệch
-                    const timeDiff = startDate.getTime() - procDate.getTime();
-                    const dayDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-                    
-                    // Chỉ chấp nhận nếu: 
-                    // - Ngày thực hiện là thứ 6 (5) và thời gian bắt đầu là thứ 7 (6) hoặc chủ nhật (0) của tuần đó
-                    // - Chênh lệch không quá 2 ngày
+                    const dayDiff = Math.ceil((startDate.getTime() - procDate.getTime()) / (1000 * 3600 * 24));
+
+                    // Chỉ chấp nhận dự trù từ Thứ 6 sang Thứ 7/CN và lệch không quá 2 ngày
                     if (procDayOfWeek === 5 && (startDayOfWeek === 6 || startDayOfWeek === 0) && dayDiff <= 2) {
-                        // Hợp lệ: thứ 6 -> thứ 7 hoặc chủ nhật
                         isDateMismatch = false;
                     } else {
                         isDateMismatch = true;
-                        errorMessage = `Sắc thuốc thang: Ngày thực hiện (${procedureDate}) khác với ngày bắt đầu (${startTime.dateKey}) không phải y lệnh dự trù.`;
+                        errorMessage = `Sắc thuốc: Ngày thực hiện (${procedureDate}) không khớp với bắt đầu (${startTime.dateKey}) hoặc kết thúc (${endTime.dateKey})`;
                     }
                 } else {
-                    // Với thủ thuật khác: luôn báo lỗi
                     isDateMismatch = true;
-                    errorMessage = `Ngày thực hiện (${procedureDate}) khác với ngày bắt đầu (${startTime.dateKey})`;
+                    if (startNotMatch && endNotMatch) {
+                        errorMessage = `Cả TG bắt đầu (${startTime.dateKey}) và kết thúc (${endTime.dateKey}) đều khác Ngày thực hiện (${procedureDate})`;
+                    } else if (startNotMatch) {
+                        errorMessage = `TG bắt đầu (${startTime.dateKey}) khác Ngày thực hiện (${procedureDate})`;
+                    } else {
+                        errorMessage = `TG kết thúc (${endTime.dateKey}) khác Ngày thực hiện (${procedureDate})`;
+                    }
                 }
             }
             
             if (isDateMismatch) {
                 dateMismatchLog.push({
                     rowNumber: rowNumber,
-                    patientName: nameIndex !== -1 ? row[nameIndex] || 'Không có' : 'Không có',
-                    patientId: patientIdIndex !== -1 ? row[patientIdIndex] || 'Không có' : 'Không có',
-                    patientAge: patientageIndex !== -1 ? row[patientageIndex] || 'Không có' : 'Không có',
+                    patientName: nameIndex !== -1 ? row[nameIndex] : 'Không có',
+                    patientId: patientIdIndex !== -1 ? row[patientIdIndex] : 'Không có',
+                    patientAge: patientageIndex !== -1 ? row[patientageIndex] : 'Không có',
                     procedure: procedureName,
-                    operator: operatorIndex !== -1 ? row[operatorIndex] || 'Không có' : 'Không có',
-                    doctor: doctorIndex !== -1 ? row[doctorIndex] || 'Không có' : 'Không có',
+                    operator: operatorIndex !== -1 ? row[operatorIndex] : 'Không có',
+                    doctor: doctorIndex !== -1 ? row[doctorIndex] : 'Không có',
                     procedureDate: procedureDate,
                     startTime: startTime.displayTime,
+                    endTime: endTime.displayTime, // Thêm vào log
                     startDate: startTime.dateKey,
+                    endDate: endTime.dateKey, // Thêm vào log
                     message: errorMessage
                 });
             }
@@ -2844,7 +2841,7 @@ function displayDateMismatchErrors() {
     const dateMismatchSection = document.getElementById('dateMismatchSection');
     
     if (dateMismatchLog.length === 0) {
-        dateMismatchLogDiv.innerHTML = '<p>Không có lỗi thời gian bắt đầu khác ngày thực hiện nào được ghi nhận</p>';
+        dateMismatchLogDiv.innerHTML = '<p>Không có lỗi lệch ngày thực hiện nào được ghi nhận</p>';
         dateMismatchSection.style.display = 'none';
         return;
     }
@@ -2861,13 +2858,17 @@ function displayDateMismatchErrors() {
                 <th class="doctor-column" style="${doctorColumnStyle}"><i class="fas fa-user-md fa-spin-continuous"></i> Bác sỹ chỉ định</th>
                 <th><i class="fas fa-user-nurse fa-spin-continuous"></i> Người thực hiện</th>
                 <th><i class="far fa-calendar-alt fa-spin-continuous"></i> Ngày thực hiện</th>
-                <th><i class="far fa-clock fa-spin-continuous"></i> Thời gian bắt đầu</th>
+                <th><i class="far fa-clock fa-spin-continuous"></i> TG Bắt đầu</th>
+                <th><i class="far fa-clock fa-spin-continuous"></i> TG Kết thúc</th>
                 <th><i class="fas fa-exclamation-triangle fa-spin-continuous"></i> Lỗi</th>
             </tr>
         </thead>
         <tbody>`;
     
     dateMismatchLog.forEach(error => {
+        const startErrorStyle = error.startDate !== error.procedureDate ? 'color:red; font-weight:bold;' : '';
+        const endErrorStyle = error.endDate !== error.procedureDate ? 'color:red; font-weight:bold;' : '';
+
         html += `
         <tr class="error-row">
             <td>${error.patientName} [<font color="red">${error.patientAge}</font>]<br/>${error.patientId}</td>
@@ -2876,6 +2877,7 @@ function displayDateMismatchErrors() {
             <td>${error.operator.replace(/,/g, '')}</td>
             <td><center>${error.procedureDate}</center></td>
             <td><center>${error.startDate}<br/>${error.startTime}</center></td>
+            <td><center>${error.endDate}<br/>${error.endTime}</center></td>
             <td class="error-detail">
                 ${error.message}
             </td>
@@ -2896,10 +2898,12 @@ function updateDateMismatchOperatorFilter() {
     const operators = [...new Set(dateMismatchLog.map(error => error.operator))];
     const operatorSelect = document.getElementById('dateMismatchOperatorSelect');
     
-    operatorSelect.innerHTML = '<option value="all">Tất cả</option>' + 
-        operators.map(op => `<option value="${op}">${op.replace(/,/g, '')}</option>`).join('');
-    
-    document.getElementById('dateMismatchOperatorFilter').style.display = operators.length > 0 ? 'block' : 'none';
+    if (operatorSelect) {
+        operatorSelect.innerHTML = '<option value="all">Tất cả</option>' + 
+            operators.map(op => `<option value="${op}">${op.replace(/,/g, '')}</option>`).join('');
+        
+        document.getElementById('dateMismatchOperatorFilter').style.display = operators.length > 0 ? 'block' : 'none';
+    }
 }
 
 // Lọc date mismatch theo người thực hiện
@@ -2919,7 +2923,7 @@ function displayFilteredDateMismatchErrors(filteredErrors) {
     const doctorColumnStyle = showDoctor ? '' : 'display:none';
     
     if (filteredErrors.length === 0) {
-        dateMismatchLogDiv.innerHTML = '<p>Không có lỗi thời gian bắt đầu khác ngày thực hiện nào được ghi nhận</p>';
+        dateMismatchLogDiv.innerHTML = '<p>Không có kết quả lọc phù hợp</p>';
         return;
     }
     
@@ -2932,13 +2936,17 @@ function displayFilteredDateMismatchErrors(filteredErrors) {
                 <th class="doctor-column" style="${doctorColumnStyle}"><i class="fas fa-user-md fa-spin-continuous"></i> Bác sỹ chỉ định</th>
                 <th><i class="fas fa-user-nurse fa-spin-continuous"></i> Người thực hiện</th>
                 <th><i class="far fa-calendar-alt fa-spin-continuous"></i> Ngày thực hiện</th>
-                <th><i class="far fa-clock fa-spin-continuous"></i> Thời gian bắt đầu</th>
+                <th><i class="far fa-clock fa-spin-continuous"></i> TG Bắt đầu</th>
+                <th><i class="far fa-clock fa-spin-continuous"></i> TG Kết thúc</th>
                 <th><i class="fas fa-exclamation-triangle fa-spin-continuous"></i> Lỗi</th>
             </tr>
         </thead>
         <tbody>`;
     
     filteredErrors.forEach(error => {
+        const startErrorStyle = error.startDate !== error.procedureDate ? 'color:red; font-weight:bold;' : '';
+        const endErrorStyle = error.endDate !== error.procedureDate ? 'color:red; font-weight:bold;' : '';
+
         html += `
         <tr class="error-row">
             <td>${error.patientName} [<font color="red">${error.patientAge}</font>]<br/>${error.patientId}</td>
@@ -2947,6 +2955,7 @@ function displayFilteredDateMismatchErrors(filteredErrors) {
             <td>${error.operator.replace(/,/g, '')}</td>
             <td><center>${error.procedureDate}</center></td>
             <td><center>${error.startDate}<br/>${error.startTime}</center></td>
+            <td><center>${error.endDate}<br/>${error.endTime}</center></td>
             <td class="error-detail">
                 ${error.message}
             </td>
