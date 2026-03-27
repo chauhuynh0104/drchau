@@ -1526,17 +1526,28 @@ function showKhoaErrorPopup(errorMessage) {
 }
                         
                         if (start.dateKey !== end.dateKey) {
-                            logError('Thủ thuật bắt đầu và kết thúc khác ngày', rowNumber, {
-                                startDate: start.dateKey,
-                                endDate: end.dateKey,
-                                patientName: nameIndex !== -1 ? row[nameIndex] || 'Không có' : 'Không có',
-								patientId: patientIdIndex !== -1 ? row[patientIdIndex] || 'Không có' : 'Không có',
-								patientAge: patientageIndex !== -1 ? row[patientageIndex] || 'Không có' : 'Không có',
-                                procedure: procedureName
-                            });
-                            skippedRows++;
-                            return;
-                        }
+    // Thu thập dữ liệu lỗi để hiển thị ra bảng Error Log
+    errorLog.push({
+        type: 'ERROR',
+        row: rowNumber,
+        message: 'Thủ thuật bắt đầu và kết thúc khác ngày',
+        details: {
+            patientName: nameIndex !== -1 ? row[nameIndex] || 'Không có' : 'Không có',
+            patientId: patientIdIndex !== -1 ? row[patientIdIndex] || 'Không có' : 'Không có',
+            patientAge: patientageIndex !== -1 ? row[patientageIndex] || 'Không có' : 'Không có',
+            procedure: procedureName,
+            // Lấy trực tiếp thông tin từ dòng hiện tại để không bị trống
+            operator: row[operatorIndex] || 'Không có', 
+            doctor: row[doctorIndex] || 'Không có',
+            // Lấy cột "Ngày thực hiện" thay vì để "Không có"
+            ngayThucHien: dateIndex !== -1 ? row[dateIndex] : (start.dateKey || 'Không xác định'),
+            startTime: start.displayTime,
+            endTime: end.displayTime
+        }
+    });
+    skippedRows++;
+    return; // Bỏ qua dòng này không đưa vào kết quả xử lý chính
+}
                         
                         if (end.seconds <= start.seconds) {
     logError('Thời gian kết thúc phải sau thời gian bắt đầu', rowNumber, {
@@ -3415,7 +3426,6 @@ function displayErrors() {
         errorLogDiv.innerHTML = '<p>Không có lỗi nào được ghi nhận</p>';
         document.getElementById('errorSection').style.display = 'none';
         
-        // Nếu không có lỗi, cuộn xuống phần Kết Quả Kiểm Tra
         setTimeout(() => {
             const resultSection = document.getElementById('resultSection');
             if (resultSection && resultSection.style.display !== 'none') {
@@ -3439,19 +3449,31 @@ function displayErrors() {
         </thead>
         <tbody>`;
     
-    // Hiển thị từng lỗi
     errorLog.forEach(error => {
         if (error.details) {
+            // Logic xử lý hiển thị cột Thời gian
+            let thoiGianHienThi = '';
+            
+            if (error.message === 'Thủ thuật bắt đầu và kết thúc khác ngày') {
+                // Nếu lỗi khác ngày, chỉ hiển thị mỗi Ngày thực hiện
+                thoiGianHienThi = `<center>${error.details.ngayThucHien || error.details.date || 'Không có'}</center>`;
+            } else {
+                // Các lỗi khác (như lỗi thời gian tối thiểu) thì hiện cả ngày và giờ
+                const ngay = error.details.ngayThucHien || error.details.date || '';
+                const gio = error.details.startTime ? `${error.details.startTime} - ${error.details.endTime}` : '';
+                thoiGianHienThi = `<center>${ngay}${gio ? '<br/>' + gio : ''}</center>`;
+            }
+
             html += `
             <tr class="error-row">
                 <td>${error.details.patientName || 'Không có'} [<font color="red">${error.details.patientAge || '00'}</font>]<br/> ${error.details.patientId || '000000'}</td>
                 <td>${error.details.procedure || 'Không có'}</td>
                 <td class="doctor-column">${error.details.doctor || 'Không có'}</td>
                 <td>${error.details.operator ? error.details.operator.replace(/,/g, '') : 'Không có'}</td>
-                <td><center>${error.details.ngayThucHien || (error.details.date || 'Không có')} <br/>${error.details.startTime ? `${error.details.startTime} - ${error.details.endTime}` : 'Không có'}</center></td>
+                <td>${thoiGianHienThi}</td>
                 <td class="error-detail">
                     ${error.message}
-                    <b><font color="red">${error.details.expected ? `${error.details.actual} phút</font></b>   (Tối thiểu: ${error.details.expected} phút)` : ''}
+                    ${error.details.expected ? `<b><font color="red">${error.details.actual} phút</font></b> (Tối thiểu: ${error.details.expected} phút)` : ''}
                 </td>
             </tr>`;
         } else {
@@ -3467,9 +3489,8 @@ function displayErrors() {
     html += `</tbody></table>`;
     
     errorLogDiv.innerHTML = html;
-   document.getElementById('errorSection').style.display = 'block';
+    document.getElementById('errorSection').style.display = 'block';
     
-    // Cuộn xuống phần lỗi nếu có
     setTimeout(() => {
         const errorSection = document.getElementById('errorSection');
         if (errorSection) {
