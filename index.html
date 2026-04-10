@@ -2183,7 +2183,7 @@ function checkDateMismatch(procedures, jsonData) {
 
 
  ////hàm kiểm tra thủ thuật cao cấp bác sĩ thực hiện///////////
- function displayInvalidDoctorErrors() {
+function displayInvalidDoctorErrors() {
     const section = document.getElementById('invalidDoctorSection');
     const logDiv = document.getElementById('invalidDoctorLog');
     const filterDiv = document.getElementById('invalidDoctorFilter');
@@ -2191,24 +2191,36 @@ function checkDateMismatch(procedures, jsonData) {
 
     if (!section || !logDiv) return;
 
-    if (invalidDoctorLog.length === 0) {
+    // Tên bác sĩ cần theo dõi
+    const targetDoctor = "Huỳnh Ngọc Châu";
+
+    // 1. Lọc dữ liệu riêng của bác sĩ Châu trước
+    const chauErrors = invalidDoctorLog.filter(x => x.prescribingDoctor === targetDoctor);
+
+    // 2. Logic kiểm tra: Nếu bác sĩ Châu KHÔNG có lỗi nào thì ẩn sạch và thoát hàm
+    if (chauErrors.length === 0) {
         section.style.display = 'none';
         return;
     }
 
+    // 3. Nếu có lỗi của bác sĩ Châu, bắt đầu hiển thị
     section.style.display = 'block';
     filterDiv.style.display = 'block';
 
-    // build filter
+    // Xây dựng bộ lọc (chỉ thêm các bác sĩ thực sự có lỗi trong log)
     select.innerHTML = '<option value="all">Tất cả</option>';
-    [...new Set(invalidDoctorLog.map(x => x.prescribingDoctor))].forEach(d => {
+    const doctors = [...new Set(invalidDoctorLog.map(x => x.prescribingDoctor))];
+    doctors.forEach(d => {
         const opt = document.createElement('option');
         opt.value = d;
         opt.textContent = d;
+        if (d === targetDoctor) opt.selected = true; // Mặc định chọn luôn Châu
         select.appendChild(opt);
     });
 
-    function render(filterDoctor = 'all') {
+    function render(filterDoctor = targetDoctor) { // Mặc định render theo Châu
+        const filteredData = invalidDoctorLog.filter(x => filterDoctor === 'all' || x.prescribingDoctor === filterDoctor);
+        
         logDiv.innerHTML = `
             <table class="error-table">
                 <thead>
@@ -2221,25 +2233,22 @@ function checkDateMismatch(procedures, jsonData) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${invalidDoctorLog
-                        .filter(x => filterDoctor === 'all' || x.prescribingDoctor === filterDoctor)
-                        .map(x => `
-                            <tr class="error-row">
-                                <td>${x.patient}[<font color="red">${x.patientAge}</font>]<br/>${x.patientId}</td>
-                                <td>${x.procedure}</td>
-                                <td><center>${x.date}<br/>
-                             ${x.time}</center></td>
-								 <td>${x.prescribingDoctor}</td>
-                                <td>${x.doctor.replace(/,/g, '')}</td>
-                            </tr>
-                        `).join('')}
+                    ${filteredData.map(x => `
+                        <tr class="error-row">
+                            <td>${x.patient}[<font color="red">${x.patientAge}</font>]<br/>${x.patientId}</td>
+                            <td>${x.procedure}</td>
+                            <td><center>${x.date}<br/>${x.time}</center></td>
+                            <td>${x.prescribingDoctor}</td>
+                            <td>${x.doctor.replace(/,/g, '')}</td>
+                        </tr>
+                    `).join('')}
                 </tbody>
             </table>
         `;
     }
 
     select.onchange = () => render(select.value);
-    render();
+    render(targetDoctor); // Gọi hàm render lần đầu với bác sĩ Châu
 }
 
 /////end///////////
@@ -2993,14 +3002,24 @@ function displayDoctorProcedureMismatchErrors() {
     const filterDiv = document.getElementById('doctorProcedureMismatchFilter');
     const doctorSelect = document.getElementById('doctorProcedureMismatchDoctorSelect');
 
-    logDiv.innerHTML = '';
-    doctorSelect.innerHTML = '<option value="all">Tất cả</option>';
+    if (!section || !logDiv) return;
 
-    if (doctorProcedureMismatchLog.length === 0) {
+    // 1. Cấu hình tên bác sĩ mục tiêu
+    const targetDoctor = "Huỳnh Ngọc Châu";
+
+    // 2. Lọc thử xem bác sĩ Châu có lỗi nào trong danh sách này không
+    const chauErrors = doctorProcedureMismatchLog.filter(p => p.doctor === targetDoctor);
+
+    // 3. Nếu bác sĩ Châu không có lỗi -> Ẩn toàn bộ bảng và thoát
+    if (chauErrors.length === 0) {
         section.style.display = 'none';
         filterDiv.style.display = 'none';
         return;
     }
+
+    // Nếu có lỗi của bác sĩ Châu, tiếp tục xử lý hiển thị
+    logDiv.innerHTML = '';
+    doctorSelect.innerHTML = '<option value="all">Tất cả</option>';
 
     // ====== ĐỔ DROPDOWN BÁC SỸ ======
     const doctorSet = new Set();
@@ -3012,6 +3031,8 @@ function displayDoctorProcedureMismatchErrors() {
         const opt = document.createElement('option');
         opt.value = d;
         opt.textContent = d;
+        // Tự động chọn Huỳnh Ngọc Châu trong dropdown
+        if (d === targetDoctor) opt.selected = true;
         doctorSelect.appendChild(opt);
     });
 
@@ -3036,7 +3057,7 @@ function displayDoctorProcedureMismatchErrors() {
 
     const tbody = table.querySelector('tbody');
 
-    function renderRows(filterDoctor = 'all') {
+    function renderRows(filterDoctor = targetDoctor) { // Mặc định render theo Châu
         tbody.innerHTML = '';
 
         doctorProcedureMismatchLog.forEach(p => {
@@ -3057,7 +3078,8 @@ function displayDoctorProcedureMismatchErrors() {
         });
     }
 
-    renderRows();
+    // Render lần đầu mặc định theo bác sĩ Châu
+    renderRows(targetDoctor);
 
     doctorSelect.onchange = () => {
         renderRows(doctorSelect.value);
@@ -3421,44 +3443,47 @@ const operatorError = document.getElementById('operatorSelectError').value;
 
 function displayErrors() {
     const errorLogDiv = document.getElementById('errorLog');
+    const section = document.getElementById('errorSection');
     
-    if (errorLog.length === 0) {
-        errorLogDiv.innerHTML = '<p>Không có lỗi nào được ghi nhận</p>';
-        document.getElementById('errorSection').style.display = 'none';
-        
-        setTimeout(() => {
-            const resultSection = document.getElementById('resultSection');
-            if (resultSection && resultSection.style.display !== 'none') {
-                smoothScrollTo(resultSection, -40);
-            }
-        }, 300);
+    // 1. Cấu hình tên bác sĩ mục tiêu
+    const targetDoctor = "Huỳnh Ngọc Châu";
+
+    // 2. Lọc dữ liệu lỗi: Chỉ lấy những lỗi mà bác sĩ chỉ định là Huỳnh Ngọc Châu
+    // Lưu ý: Kiểm tra trong data của bạn là error.details.doctor hay error.details.prescribingDoctor
+    const chauErrors = errorLog.filter(error => 
+        error.details && (error.details.doctor === targetDoctor || error.details.prescribingDoctor === targetDoctor)
+    );
+
+    // 3. Logic ẩn/hiện: Nếu bác sĩ Châu không có lỗi nào thì ẩn luôn Section và thoát
+    if (chauErrors.length === 0) {
+        errorLogDiv.innerHTML = '<p>Không có lỗi nào được ghi nhận cho bác sĩ ' + targetDoctor + '</p>';
+        if (section) section.style.display = 'none';
         return;
     }
-    
+
+    // 4. Nếu có lỗi của Châu, bắt đầu xây dựng HTML bảng
     let html = `
     <table class="error-table">
         <thead>
             <tr>
-             <th><i class="fas fa-user fa-spin-continuous"></i> Tên BN</th>
-            <th><i class="fas fa-procedures fa-spin-continuous"></i> Thủ thuật</th>
-            <th class="doctor-column"><i class="fas fa-user-md fa-spin-continuous"></i> Bác sỹ chỉ định</th>
-            <th><i class="fas fa-user-nurse fa-spin-continuous"></i> Người thực hiện</th>
-            <th><i class="far fa-clock fa-spin-continuous"></i> Thời gian</th>
-            <th><i class="fas fa-exclamation-triangle fa-spin-continuous"></i> Lỗi</th>
+                <th><i class="fas fa-user fa-spin-continuous"></i> Tên BN</th>
+                <th><i class="fas fa-procedures fa-spin-continuous"></i> Thủ thuật</th>
+                <th class="doctor-column"><i class="fas fa-user-md fa-spin-continuous"></i> Bác sỹ chỉ định</th>
+                <th><i class="fas fa-user-nurse fa-spin-continuous"></i> Người thực hiện</th>
+                <th><i class="far fa-clock fa-spin-continuous"></i> Thời gian</th>
+                <th><i class="fas fa-exclamation-triangle fa-spin-continuous"></i> Lỗi</th>
             </tr>
         </thead>
         <tbody>`;
     
-    errorLog.forEach(error => {
+    // 5. Chỉ duyệt qua mảng chauErrors đã lọc
+    chauErrors.forEach(error => {
         if (error.details) {
-            // Logic xử lý hiển thị cột Thời gian
             let thoiGianHienThi = '';
             
             if (error.message === 'Thủ thuật bắt đầu và kết thúc khác ngày') {
-                // Nếu lỗi khác ngày, chỉ hiển thị mỗi Ngày thực hiện
                 thoiGianHienThi = `<center>${error.details.ngayThucHien || error.details.date || 'Không có'}</center>`;
             } else {
-                // Các lỗi khác (như lỗi thời gian tối thiểu) thì hiện cả ngày và giờ
                 const ngay = error.details.ngayThucHien || error.details.date || '';
                 const gio = error.details.startTime ? `${error.details.startTime} - ${error.details.endTime}` : '';
                 thoiGianHienThi = `<center>${ngay}${gio ? '<br/>' + gio : ''}</center>`;
@@ -3468,19 +3493,12 @@ function displayErrors() {
             <tr class="error-row">
                 <td>${error.details.patientName || 'Không có'} [<font color="red">${error.details.patientAge || '00'}</font>]<br/> ${error.details.patientId || '000000'}</td>
                 <td>${error.details.procedure || 'Không có'}</td>
-                <td class="doctor-column">${error.details.doctor || 'Không có'}</td>
+                <td class="doctor-column">${error.details.doctor || error.details.prescribingDoctor || 'Không có'}</td>
                 <td>${error.details.operator ? error.details.operator.replace(/,/g, '') : 'Không có'}</td>
                 <td>${thoiGianHienThi}</td>
                 <td class="error-detail">
                     ${error.message}
                     ${error.details.expected ? `<b><font color="red">${error.details.actual} phút</font></b> (Tối thiểu: ${error.details.expected} phút)` : ''}
-                </td>
-            </tr>`;
-        } else {
-            html += `
-            <tr class="error-row">
-                <td colspan="6" class="error-detail">
-                    ${error.message} ${error.row ? '(Dòng ' + error.row + ')' : ''}
                 </td>
             </tr>`;
         }
@@ -3489,12 +3507,12 @@ function displayErrors() {
     html += `</tbody></table>`;
     
     errorLogDiv.innerHTML = html;
-    document.getElementById('errorSection').style.display = 'block';
+    section.style.display = 'block';
     
+    // Cuộn màn hình đến bảng lỗi
     setTimeout(() => {
-        const errorSection = document.getElementById('errorSection');
-        if (errorSection) {
-            smoothScrollTo(errorSection, -130);
+        if (section) {
+            smoothScrollTo(section, -130);
         }
     }, 300);
 }
