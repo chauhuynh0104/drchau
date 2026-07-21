@@ -839,6 +839,7 @@ document.getElementById('fileInput').addEventListener('change', function () {
   <div id="dateMismatchLog"></div>
 </div>
 <br/>
+<div style="display:none;">
 <!-- BẢNG BÁC SĨ CHỈ ĐỊNH KHÔNG HỢP LỆ -->
 <div id="invalidDoctorSection" style="display:none;">
   <br/>
@@ -851,7 +852,7 @@ document.getElementById('fileInput').addEventListener('change', function () {
     </select>
   </div>
 
-  <div id="invalidDoctorLog"></div>
+  <div id="invalidDoctorLog"style="display:none;"></div>
 </div>
 <br/>
 <!-- BẢNG BÁC SỸ CHỈ ĐỊNH KHÁC THỦ THUẬT CHÍNH -->
@@ -865,7 +866,8 @@ document.getElementById('fileInput').addEventListener('change', function () {
   </select>
 </div>
 
-  <div id="doctorProcedureMismatchLog"></div>
+  <div id="doctorProcedureMismatchLog"style="display:none;"></div>
+</div>
 </div>
 <br/>
 
@@ -1768,6 +1770,63 @@ let isConflict = true;
                     }
                 }
             });
+			
+			
+			
+			// === Kiểm tra trùng giờ theo BỆNH NHÂN khi có kỹ thuật "toàn thời gian" (không có prep) ===
+            const patientGroups = {};
+            procedures.forEach(proc => {
+                const pid = (proc.patientId && proc.patientId !== 'Không có') ? proc.patientId : proc.patientName;
+                const key = `${pid}_${proc.date}`;
+                if (!patientGroups[key]) {
+                    patientGroups[key] = [];
+                }
+                patientGroups[key].push(proc);
+            });
+
+            Object.values(patientGroups).forEach(group => {
+                if (group.length < 2) return;
+                group.sort((a, b) => a.start - b.start);
+
+                for (let i = 0; i < group.length; i++) {
+                    for (let j = i + 1; j < group.length; j++) {
+                        const a = group[i];
+                        const b = group[j];
+
+                        if (a.operator === b.operator) continue;
+
+                        const aHasPrep = !!(a.procedureInfo && Object.prototype.hasOwnProperty.call(a.procedureInfo, 'prep'));
+                        const bHasPrep = !!(b.procedureInfo && Object.prototype.hasOwnProperty.call(b.procedureInfo, 'prep'));
+
+                        if (aHasPrep && bHasPrep) continue;
+
+                        const aEndWithBuffer = a.end + (a.procedureInfo?.buffer || 0) * 60;
+                        const bEndWithBuffer = b.end + (b.procedureInfo?.buffer || 0) * 60;
+
+                        const overlap = b.start < aEndWithBuffer && a.start < bEndWithBuffer;
+                        if (!overlap) continue;
+
+                        a.conflict = true;
+                        b.conflict = true;
+
+                        if (!a.conflictReason) a.conflictReason = '';
+                        if (!a.conflictReason.includes(b.procedure)) {
+                            a.conflictReason += (a.conflictReason ? '<br><br>' : '') +
+                                `${b.procedure}<br>• Bệnh nhân: ${b.patientName}<br>• Ngày: ${b.date}<br>• Thời gian: ${b.displayStart}-${b.displayEnd}`;
+                        }
+
+                        if (!b.conflictReason) b.conflictReason = '';
+                        if (!b.conflictReason.includes(a.procedure)) {
+                            b.conflictReason += (b.conflictReason ? '<br><br>' : '') +
+                                ` ${a.procedure}<br>• Bệnh nhân: ${a.patientName}<br>• Ngày: ${a.date}<br>• Thời gian: ${a.displayStart}-${a.displayEnd}`;
+                        }
+                    }
+                }
+            });
+			
+			
+			
+			
         }
 
 
